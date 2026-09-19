@@ -49,16 +49,16 @@ _METRIC_RE = re.compile(
     re.IGNORECASE,
 )
 
-# 指标与数值之间的连接方式。实测有：= : ：  of  is  are  was  were  reached  (  空格
-_CONNECTOR_RE = re.compile(
-    r"^\s*(?:[=:：]|of\s|is\s|are\s|was\s|were\s|reached\s|equal(?:s|led)?\s|at\s|\()?\s*",
-    re.IGNORECASE,
-)
+# 指标与数值之间的「连接段」——**不枚举连接词，而是限定扫描窗口**。
+# 原因：实测连接方式无穷多（= : of is was reached ( reduced from decreasing from …），
+# 枚举必然漏。改为「跳过一段不含数字、不跨句的字符，然后读数字」。
+_LINK_MAX = 44
+_SENTENCE_END = "。;；\n"
 
 # 数值前可能出现的近似标记
-_APPROX_RE = re.compile(r"^(?:[≈~\u2248]|about\s+|around\s+|approximately\s+|约\s*)?")
-# 不等式
-_INEQ_RE = re.compile(r"^(<=|>=|≤|≥|<|>)\s*")
+_APPROX_RE = re.compile(r"[≈~\u2248]|about\s+|around\s+|approximately\s+|约")
+# 不等式标志
+_INEQ_RE = re.compile(r"<=|>=|≤|≥|<|>")
 _NUMBER_RE = re.compile(r"^(-?\d+(?:\.\d+)?)")
 # 单位（可选，跟在数值后）
 _UNIT_RE = re.compile(
@@ -66,7 +66,6 @@ _UNIT_RE = re.compile(
 )
 
 # 区间：from X to Y / X–Y / X 到 Y
-_RANGE_FROM_RE = re.compile(r"^\s*from\s+", re.IGNORECASE)
 _RANGE_TO_RE = re.compile(r"^\s*(?:to|~|-|–|—|至|到)\s*", re.IGNORECASE)
 
 
@@ -103,6 +102,12 @@ def normalize_text(text: str) -> str:
         out = out.replace(full, half)
     # 数字被空格拆开：0. 0125 → 0.0125
     out = re.sub(r"(?<=\d)\s+(?=[.,]\d)", "", out)
+    # 小数点被渲染成冒号：`0 : 055` → `0.055`（实测论文4 p16）
+    out = re.sub(r"\b(\d)\s*:\s*(\d{2,3})\b", r"\1.\2", out)
+    # 无法解码的替换字符（实测它替掉了 '='）—— 移除，关系回退为等值
+    out = out.replace("\ufffd", "")
+    # 移除后可能留下多余空白，统一折叠
+    out = re.sub(r"[ \t]{2,}", " ", out)
     return out
 
 
@@ -133,29 +138,31 @@ def extract_facts(
             metric = _canon_metric(match.group(1))
             rest = text[match.end() :]
 
-            # 1) 连接词（= : ： of is was reached ( 或空白）
-            conn = _CONNECTOR_RE.match(rest)
-            cursor = conn.end() if conn else 0
+            # 1) 扫描窗口：跳过一段不含数字、不跨句的字符（容纳任意连接词）
+            window = 0
+            while (
+                window < min(_LINK_MAX, len(rest))
+                and not rest[window].isdigit()
+                and rest[window] not in _SENTENCE_END
+            ):
+                window += 1
+            link = rest[:window]
 
-            # 2) 不等式 或 近似标记；都没有则是等值
-            ineq = _INEQ_RE.match(rest[cursor:])
+            # 2) 关系：不等式优先，其次近似，否则等值
+            ineq = _INEQ_RE.search(link)
             if ineq:
-                relation = ineq.group(1).strip()
-                cursor += ineq.end()
+                relation = ineq.group(0)
+            elif _APPROX_RE.search(link):
+                relation = "≈"
             else:
-                approx = _APPROX_RE.match(rest[cursor:])
-                if approx and approx.group(0):
-                    relation = "≈"
-                    cursor += approx.end()
-                else:
-                    relation = "="
+                relation = "="
 
             # 3) 数值
-            num = _NUMBER_RE.match(rest[cursor:])
+            num = _NUMBER_RE.match(rest[window:])
             if not num:
                 continue
             value = float(num.group(1))
-            num_end = cursor + num.end()
+            num_end = window + num.end()
 
             # 4) 单位（可选）
             unit = ""
@@ -179,9 +186,9 @@ def extract_facts(
                 )
             )
 
-            # 5) 区间式：from X to Y —— 第二个值也作为一条事实
+            # 5) 区间式：from X to Y / X 到 Y —— 第二个值也作为一条事实
             tail = rest[num_end:]
-            if _RANGE_FROM_RE.match(rest[cursor:] or " ") or _RANGE_TO_RE.match(tail):
+            if _RANGE_TO_RE.match(tail):
                 after = _RANGE_TO_RE.sub("", tail, count=1)
                 m2 = _NUMBER_RE.match(after.lstrip())
                 if m2:
