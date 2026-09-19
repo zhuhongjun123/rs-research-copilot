@@ -1,0 +1,50 @@
+[workspace]
+authors = ["zhuhongjun123 <zhj2223916884@163.com>"]
+channels = ["conda-forge"]
+name = "rs-research-copilot"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[pypi-options]
+index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+extra-index-urls = ["https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"]
+
+# ── 环境 ───────────────────────────────────────────────────────────
+# parser 独立成环境的原因：Docling 依赖链重（torch/transformers/
+# huggingface-hub），且与 conda 侧被 pin 的 typer / huggingface-hub
+# 版本冲突。隔离后主环境保持干净，解析器以子进程 worker 形式调用。
+# 详见 PLAN.md §5 与 RUN_LOG.md。
+[environments]
+default = { solve-group = "default" }
+# no-default-feature：解析环境不继承主环境依赖（否则 conda 侧被 pin 的
+# typer 会漏进来，与 docling 冲突）
+parser = { features = ["parser"], solve-group = "parser", no-default-feature = true }
+
+[feature.parser.dependencies]
+python = "3.12.*"
+
+[feature.parser.pypi-dependencies]
+docling = ">=2.129"
+
+[tasks]
+# 用干净 PATH 启动，绕开 Windows 上其它 GDAL/PROJ 发行版遮蔽本环境 DLL 的问题
+# （Anaconda / ArcGIS 的 Library\bin 会遮蔽 gdal.dll）
+py = "python scripts/bootstrap_env.py"
+
+[dependencies]
+python = "3.12.*"
+langgraph = ">=1.2.11,<2"
+langchain-core = ">=1.6.3,<2"
+openai = ">=3.15.0,<4"
+fastapi = ">=0.141.1,<0.142"
+uvicorn = ">=0.53.0,<0.54"
+faiss-cpu = ">=1.14.3,<2"
+rank-bm25 = ">=0.2.2,<0.3"
+sentence-transformers = ">=6.0.1,<7"
+pyzotero = ">=1.15.1,<2"
+requests = ">=2.34.2,<3"
+pyyaml = ">=6.0.3,<7"
+pytest = ">=9.1.1,<10"
+ruff = ">=0.16.7,<0.17"
+
+# ⚠️ 注意：PyMuPDF 是 AGPL-3.0，会污染本项目的开源许可 —— 不进依赖。
