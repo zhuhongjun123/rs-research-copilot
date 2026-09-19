@@ -1,0 +1,50 @@
+[
+  {
+    "key": "AXYEL58Y",
+    "injected": 1,
+    "caught": 1,
+    "clean_conflicts": 0,
+    "llm_injected": 1,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 3.7702150344848633,
+    "llm_tokens": 21986,
+    "notes": []
+  },
+  {
+    "key": "C7KQG54K",
+    "injected": 3,
+    "caught": 3,
+    "clean_conflicts": 0,
+    "llm_injected": 3,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 2.0355026721954346,
+    "llm_tokens": 21034,
+    "notes": []
+  },
+  {
+    "key": "KFI4C44E",
+    "injected": 0,
+    "caught": 0,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": []
+  },
+  {
+    "key": "YHFVF5NU",
+    "injected": 1,
+    "caught": 1,
+    "clean_conflicts": 0,
+    "llm_injected": 1,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 2.4577581882476807,
+    "llm_tokens": 20722,
+    "notes": []
+  }
+]

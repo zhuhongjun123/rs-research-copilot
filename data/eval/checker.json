@@ -1,0 +1,50 @@
+[
+  {
+    "key": "AXYEL58Y",
+    "injected": 3,
+    "caught": 3,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": []
+  },
+  {
+    "key": "C7KQG54K",
+    "injected": 6,
+    "caught": 6,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": []
+  },
+  {
+    "key": "KFI4C44E",
+    "injected": 0,
+    "caught": 0,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": []
+  },
+  {
+    "key": "YHFVF5NU",
+    "injected": 3,
+    "caught": 3,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": []
+  }
+]

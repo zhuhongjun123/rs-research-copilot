@@ -333,24 +333,35 @@ def check_c1_counts(blocks: list[dict]) -> list[Finding]:
 
 # ── C5：单位量纲一致 ────────────────────────────────────────────
 def check_c5_units(facts: list[NumericFact]) -> list[Finding]:
-    """同一指标在同一篇论文里用了不同单位 → 可疑。"""
-    groups: dict[str, set[str]] = defaultdict(set)
-    examples: dict[str, list[NumericFact]] = defaultdict(list)
+    """单位量纲一致性。
+
+    分两档（与 C2 同思路）：
+      - **同一对象**用了不同单位 → conflict（真矛盾）
+      - 不同对象用不同单位 → 合法，不报
+      - 对象抽不出 → 报 info 交人工
+    """
+    groups: dict[tuple[str, str], set[str]] = defaultdict(set)
+    examples: dict[tuple[str, str], list[NumericFact]] = defaultdict(list)
     for f in facts:
-        if f.metric in ("样本量",) or not f.unit:
+        if f.metric == "样本量" or not f.unit:
             continue
-        groups[f.metric].add(f.unit)
-        examples[f.metric].append(f)
+        key = (f.metric, extract_subject(f))
+        groups[key].add(f.unit)
+        examples[key].append(f)
 
     out: list[Finding] = []
-    for metric, units in groups.items():
+    for (metric, subject), units in groups.items():
         if len(units) < 2:
             continue
         out.append(Finding(
-            check="C5", title=f"{metric} 使用了多种单位",
-            verdict="unverifiable", severity="info", subject=metric,
-            detail=f"单位：{sorted(units)} —— 若同一对象则矛盾；不同对象则正常，需人工确认",
-            items=[f for f in examples[metric] if f.unit][:6],
+            check="C5",
+            title=(f"同一对象「{subject}」的 {metric} 用了不同单位"
+                   if subject else f"{metric} 使用了多种单位"),
+            verdict="conflict" if subject else "unverifiable",
+            severity="medium" if subject else "info",
+            subject=subject or metric,
+            detail=f"单位：{sorted(units)}",
+            items=[f for f in examples[(metric, subject)] if f.unit][:6],
         ))
     return out
 
