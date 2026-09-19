@@ -552,3 +552,44 @@ SiliconFlow 返回 `429 TPM limit reached`。**评测脚本必须自己处理限
 否则一次评测跑到一半就没了。已加指数退避重试（5s/10s/20s）+ 失败时显式告警。
 
 （另：Qwen3-8B 是思考模型，短 max_tokens 下会超时 —— 用 `deepseek-ai/DeepSeek-V3`。）
+
+---
+
+## 2026-09-19 · Day 6：工程化收尾（API + README + 许可）
+
+**产出**：`src/rsrc/api.py`、`tests/test_api.py`、`tests/run_all.py`、
+`README.md`、`LICENSE`、`THIRD_PARTY_LICENSES.md`；pixi 任务 `api/audit/eval/test`。
+
+**全部自检 6/6 文件通过（42 项）**：extract 9/9 · checks 15/15 · graph 4/4 ·
+zotero 4/4 · llm 4/4 · api 6/6。
+
+### API 设计
+
+- **无状态**：按需读取 `data/index/parsed/<key>.json`
+- **失败可诊断**：缺解析产物返回 **404 + 可执行的修复命令**，不是 500 堆栈
+- `/health` 自诊断各依赖（Zotero 是否可用 / LLM 是否配置 / 已解析篇数）
+- `/audit/inject` 是**演示端点**：现场注入已知缺陷展示「能抓到」
+
+### ❌ 失败 12：最后一条误报 —— 表格单元格拼接
+
+`DVZ3NPXU` 的 `|Bias| > RMSE` 误报，原文是表格被解析器拼成的一行：
+
+```text
+… Wind Speed (m/s) Surface Pressure (hPa) 10 mWind Speed (m/s) R.RMSE RMSE 0.22 | Surface Pressure (hPa) … R.Bias Bias 1.65 …
+```
+
+`(hPa)` 属于**另一列**，RMSE 0.22 与 Bias 1.65 分属**不同行**，
+却因「同块同句 + 共享对象 hpa」被拿去互比 → 报出假的「数学不可能」。
+
+**修法**：**表格块不参与跨指标关系判定**（单事实检查如 `R²∈[0,1]` 照常）。
+表格拼行后单元格邻近关系本就不足为凭 —— 与「宁漏报不误报」一致。
+
+**结果**：12 篇语料误报 **1 → 0**，检出率仍 **6/6 = 100%**。
+
+### 方法学教训（本项目最贵的一条）
+
+从 Day 3 到 Day 6，误报经历了 **0 → 8 → 0（4 篇）→ 23（12 篇）→ 1 → 0** 的过程。
+
+**「4 篇上误报为 0」是过拟合到小样本的假象。** 把语料扩到 12 篇后，一夜之间多出 23 条误报。
+
+> 凡是在小样本上得到的「完美指标」，在扩大样本前都不要写进任何结论 —— 包括简历。

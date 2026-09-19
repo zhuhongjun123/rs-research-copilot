@@ -215,9 +215,15 @@ def check_c3_relations(facts: list[NumericFact]) -> list[Finding]:
     # ⚠️ 仅靠「同句」不够 —— 实测在 12 篇语料上产生 8 条「|Bias| > RMSE」误报：
     #    同一句里 Bias 与 RMSE 讲的**不是同一个对象**。所以再要求两者共享一个
     #    **有辨识度的对象**；对象不可得则不比较（宁漏报，不要报出错误的“数学不可能”）。
+    # ⚠️ **表格块不参与跨指标关系判定**。
+    #    实测误报：表格被解析器拼成一行后，单元格的邻近关系不再可靠 ——
+    #    `… Surface Pressure (hPa) … R.RMSE RMSE 0.22 | … R.Bias Bias 1.65 …`
+    #    里的 `(hPa)` 属于另一列，RMSE 与 Bias 也分属不同行，
+    #    却因为“同块同句 + 共享对象 hpa”被拿去互比 → 报出假的“数学不可能”。
+    #    单事实检查（如 R²∈[0,1]）不受此影响，照常执行。
     by_ctx: dict[tuple, dict[str, list[NumericFact]]] = defaultdict(lambda: defaultdict(list))
     for f in facts:
-        if f.metric in ("RMSE", "Bias", "MAE"):
+        if f.metric in ("RMSE", "Bias", "MAE") and f.block_type != "table":
             key = (f.page, f.block_index, f.sentence, distinctive_subject(f))
             by_ctx[key][f.metric].append(f)
 

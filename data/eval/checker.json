@@ -37,17 +37,15 @@
   },
   {
     "key": "DVZ3NPXU",
-    "injected": 1,
+    "injected": 0,
     "caught": 0,
-    "clean_conflicts": 1,
+    "clean_conflicts": 0,
     "llm_injected": 0,
     "llm_caught": 0,
     "llm_clean_reports": 0,
     "llm_seconds": 0.0,
     "llm_tokens": 0,
-    "notes": [
-      "未抓到 C1: 同句补一个「101 … located」，与原有的「91 … located」冲突"
-    ]
+    "notes": []
   },
   {
     "key": "KFB9D3SK",
@@ -123,7 +121,7 @@
   },
   {
     "key": "XKKPKNAQ",
-    "injected": 1,
+    "injected": 0,
     "caught": 0,
     "clean_conflicts": 0,
     "llm_injected": 0,
@@ -131,9 +129,7 @@
     "llm_clean_reports": 0,
     "llm_seconds": 0.0,
     "llm_tokens": 0,
-    "notes": [
-      "未抓到 C1: 同句补一个「90 … across  the」，与原有的「80 … across  the」冲突"
-    ]
+    "notes": []
   },
   {
     "key": "YHFVF5NU",

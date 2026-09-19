@@ -30,6 +30,10 @@ docling = ">=2.129"
 # 用干净 PATH 启动，绕开 Windows 上其它 GDAL/PROJ 发行版遮蔽本环境 DLL 的问题
 # （Anaconda / ArcGIS 的 Library\bin 会遮蔽 gdal.dll）
 py = "python scripts/bootstrap_env.py"
+api = "python -m rsrc.api"
+audit = "python scripts/run_audit.py"
+eval = "python scripts/run_eval.py"
+test = "python tests/run_all.py"
 
 [dependencies]
 python = "3.12.*"
@@ -47,5 +51,6 @@ pyyaml = ">=6.0.3,<7"
 pytest = ">=9.1.1,<10"
 ruff = ">=0.16.7,<0.17"
 fastembed = ">=0.7.4,<0.8"
+httpx = ">=0.28.1,<0.29"
 
 # ⚠️ 注意：PyMuPDF 是 AGPL-3.0，会污染本项目的开源许可 —— 不进依赖。
