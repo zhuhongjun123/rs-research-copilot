@@ -121,6 +121,10 @@ class OpenAICompatEmbedder:
     base_url: str
     batch_size: int = 20
     timeout: float = 60.0
+    # ⚠️ 只有支持 MRL 的模型才能降维。像 BAAI/bge-m3 是**固定 1024 维**，
+    #    传 `dimensions` 会直接 400（实测 SiliconFlow code 20015）。
+    #    所以默认不传，仅在用户显式设置 EMBED_DIM 时才发。
+    send_dimensions: bool = False
     _client: object = field(default=None, repr=False)
 
     def _lazy_client(self):
@@ -138,8 +142,7 @@ class OpenAICompatEmbedder:
         for start in range(0, len(texts), self.batch_size):
             chunk = texts[start : start + self.batch_size]
             kwargs: dict = {"model": self.spec.model, "input": chunk}
-            # MRL 模型才支持降维；不支持的模型传了可能报 400
-            if self.spec.dim:
+            if self.send_dimensions and self.spec.dim:
                 kwargs["dimensions"] = self.spec.dim
             resp = client.embeddings.create(**kwargs)
             vectors.extend([item.embedding for item in resp.data])
@@ -198,7 +201,9 @@ def build_embedder(provider: str | None = None) -> Embedder:
         raise ValueError(f"未知 provider：{name}（可选：{'/'.join(PROVIDER_PRESETS)}）")
 
     model = os.environ.get("EMBED_MODEL") or preset.get("embed_model", "")
-    dim = int(os.environ.get("EMBED_DIM") or preset.get("embed_dim", "0") or 0)
+    # 显式设置 EMBED_DIM 才向 API 请求降维（固定维度模型传了会 400）
+    explicit_dim = (os.environ.get("EMBED_DIM") or "").strip()
+    dim = int(explicit_dim or preset.get("embed_dim", "0") or 0)
     spec = EmbeddingSpec(provider=name, model=model, dim=dim)
 
     if name == "local":
@@ -218,4 +223,5 @@ def build_embedder(provider: str | None = None) -> Embedder:
         api_key=key,
         base_url=base_url,
         batch_size=int(preset.get("batch_size", "20")),
+        send_dimensions=bool(explicit_dim),
     )
