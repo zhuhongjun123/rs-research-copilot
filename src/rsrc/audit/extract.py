@@ -201,6 +201,12 @@ def extract_facts(
         for match in _METRIC_RE.finditer(text):
             metric = _canon_metric(match.group(1))
             rest = text[match.end() :]
+            # ⚠️ 指标被**括号包住**时（如 `RMSE (R²) of 34 W/m2 (0.53)`），
+            #    其后的数字属于前面那个指标，不是它的值 —— 实测把 34 当成了 R²。
+            #    这种情形下取值关系是歧义的（真值可能在后面另一个括号里）→
+            #    **宁漏报不误报**，直接跳过。
+            if rest.lstrip().startswith((")", "）")):
+                continue
 
             # 1) 连接段：白名单 token 扫描（不枚举完整连接串，也不跨分句）
             window = _scan_link(rest)

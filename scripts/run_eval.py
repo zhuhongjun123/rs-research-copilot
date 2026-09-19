@@ -124,12 +124,28 @@ def llm_find_inconsistencies(
 
     prompt = LLM_PROMPT % paper_text(blocks)
     t0 = time.time()
-    resp = client.chat.completions.create(
-        model=spec.model,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=2000,
-        temperature=0,
-    )
+    # ⚠️ 限流必须自己处理：实测 SiliconFlow 会返回
+    #    429 `TPM limit reached` —— 免费/低价层常见，评测跑一半就崩。
+    #    指数退避重试，并把“重试了几次”记录下来（否则耗时数字会误导）。
+    resp = None
+    last_err: Exception | None = None
+    for attempt in range(4):
+        try:
+            resp = client.chat.completions.create(
+                model=spec.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=2000,
+                temperature=0,
+            )
+            break
+        except Exception as exc:  # noqa: BLE001 - 限流/网络都重试
+            last_err = exc
+            if "429" not in str(exc) and "rate" not in str(exc).lower():
+                break
+            time.sleep(2 ** attempt * 5)  # 5s / 10s / 20s
+    if resp is None:
+        print(f"    [警告] LLM 调用失败：{str(last_err)[:90]}", file=sys.stderr)
+        return ([], time.time() - t0, 0, "") if keep_raw else ([], time.time() - t0, 0)
     dt = time.time() - t0
     raw = (resp.choices[0].message.content or "").strip()
     tokens = getattr(getattr(resp, "usage", None), "total_tokens", 0) or 0

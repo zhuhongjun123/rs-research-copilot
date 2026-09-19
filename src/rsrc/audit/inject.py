@@ -18,7 +18,7 @@ import copy
 import re
 from dataclasses import dataclass
 
-from rsrc.audit.checks import extract_subject
+from rsrc.audit.checks import extract_subject, distinctive_subject
 from rsrc.audit.extract import NumericFact, extract_facts
 
 
@@ -153,6 +153,14 @@ _COUNT_CTX = re.compile(
 )
 
 
+# 常见词，不是数据来源名（实测被误当来源：collectively / located / across）
+_NOT_A_SOURCE = {
+    "located", "across", "during", "using", "based", "including", "within",
+    "between", "respectively", "total", "average", "below", "above", "these",
+    "those", "which", "where", "while", "whereas", "although", "however",
+}
+
+
 def inject_count_conflict(
     blocks: list[dict], facts: list | None = None, used: set | None = None
 ) -> Injection | None:
@@ -170,8 +178,13 @@ def inject_count_conflict(
         if not m:
             continue
         source = m.group(3).split()[0]
-        # 过滤掉误匹配到的普通副词（如 "collectively"）—— 那不是数据来源
+        # 过滤掉误匹配到的普通词 —— 它们不是数据来源。
+        # 实测漏过的：`collectively`、`located`、`across`。
+        # 若不过滤，注入后两侧的“来源”串不一致，检查器会**正确地**
+        # 判为不同来源而不报 —— 表现为“注入的缺陷抓不到”（其实又是注入器的问题）。
         if len(source) < 5 or source.lower().endswith("ly"):
+            continue
+        if source.lower() in _NOT_A_SOURCE:
             continue
         num = int(re.sub(r"[^\d]", "", m.group(1)) or 0)
         if num <= 0:
@@ -216,14 +229,13 @@ def inject_unit_change(
     subject_count: dict[tuple[str, str], int] = {}
     for f in facts:
         if f.unit and f.metric != "样本量":
-            subject_count[(f.metric, extract_subject(f))] = (
-                subject_count.get((f.metric, extract_subject(f)), 0) + 1
-            )
+            key = (f.metric, distinctive_subject(f))
+            subject_count[key] = subject_count.get(key, 0) + 1
 
     for f in facts:
         if not f.unit or f.block_index < 0:
             continue
-        subject = extract_subject(f)
+        subject = distinctive_subject(f)
         if not subject or subject_count.get((f.metric, subject), 0) < 2:
             continue
         new_unit = alt.get(f.unit)

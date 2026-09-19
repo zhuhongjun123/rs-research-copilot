@@ -1,6 +1,30 @@
 [
   {
+    "key": "5UJJRW7T",
+    "injected": 1,
+    "caught": 1,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": []
+  },
+  {
     "key": "AXYEL58Y",
+    "injected": 1,
+    "caught": 1,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": []
+  },
+  {
+    "key": "C7KQG54K",
     "injected": 3,
     "caught": 3,
     "clean_conflicts": 0,
@@ -12,9 +36,23 @@
     "notes": []
   },
   {
-    "key": "C7KQG54K",
-    "injected": 6,
-    "caught": 6,
+    "key": "DVZ3NPXU",
+    "injected": 1,
+    "caught": 0,
+    "clean_conflicts": 1,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": [
+      "未抓到 C1: 同句补一个「101 … located」，与原有的「91 … located」冲突"
+    ]
+  },
+  {
+    "key": "KFB9D3SK",
+    "injected": 0,
+    "caught": 0,
     "clean_conflicts": 0,
     "llm_injected": 0,
     "llm_caught": 0,
@@ -36,9 +74,71 @@
     "notes": []
   },
   {
+    "key": "NJ5F9ES6",
+    "injected": 0,
+    "caught": 0,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": []
+  },
+  {
+    "key": "NXIPWYDX",
+    "injected": 0,
+    "caught": 0,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": []
+  },
+  {
+    "key": "VZEANY76",
+    "injected": 0,
+    "caught": 0,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": []
+  },
+  {
+    "key": "WUMUGI7J",
+    "injected": 0,
+    "caught": 0,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": []
+  },
+  {
+    "key": "XKKPKNAQ",
+    "injected": 1,
+    "caught": 0,
+    "clean_conflicts": 0,
+    "llm_injected": 0,
+    "llm_caught": 0,
+    "llm_clean_reports": 0,
+    "llm_seconds": 0.0,
+    "llm_tokens": 0,
+    "notes": [
+      "未抓到 C1: 同句补一个「90 … across  the」，与原有的「80 … across  the」冲突"
+    ]
+  },
+  {
     "key": "YHFVF5NU",
-    "injected": 3,
-    "caught": 3,
+    "injected": 1,
+    "caught": 1,
     "clean_conflicts": 0,
     "llm_injected": 0,
     "llm_caught": 0,

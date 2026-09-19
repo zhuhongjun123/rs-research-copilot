@@ -40,15 +40,23 @@ def _findings(text: str, page: int = 1):
 
 # ── ① 召回：注入的已知矛盾必须被抓到 ────────────────────────────
 def test_c3_catches_rmse_lt_mae() -> None:
-    f = _findings("The model has RMSE = 0.42 and MAE = 0.61 in this region.")
+    """C3 关系检查现在要求**共享一个可辨识对象**（(TRI)），否则不做判定。"""
+    f = _findings("For the Terrain Ruggedness Index (TRI): RMSE = 0.42 and MAE = 0.61.")
     assert any(x.check == "C3" and "MAE" in x.title for x in f), [x.title for x in f]
     print("    RMSE < MAE 被抓到（数学上不可能）")
 
 
 def test_c3_catches_bias_gt_rmse() -> None:
-    f = _findings("Performance: RMSE = 0.30, Bias = 0.85 for the same site.")
+    f = _findings("For the land surface temperature product (LST): RMSE = 0.30, Bias = 0.85.")
     assert any(x.check == "C3" and "Bias" in x.title for x in f), [x.title for x in f]
     print("    |Bias| > RMSE 被抓到")
+
+
+def test_c3_ignores_relation_without_shared_subject() -> None:
+    """实测误报源：同句里 Bias 与 RMSE 讲的不是同一对象时不得报「数学不可能」。"""
+    f = _findings("The dry season showed RMSE = 0.90, while the wet season gave a Bias = 0.95 at another site.")
+    assert not [x for x in f if x.check == "C3" and "Bias" in x.title], [x.title for x in f]
+    print("    无可辨识对象时不做关系判定（曾产生 8 条误报）")
 
 
 def test_c3_catches_r2_out_of_range() -> None:
@@ -74,6 +82,26 @@ def test_c1_catches_same_source_conflict() -> None:
     f = check_c1_counts([_blk("We validated at 12 sites from FLUXNET; later we report 22 sites from FLUXNET.")])
     assert any(x.verdict == "conflict" for x in f), [x.title for x in f]
     print("    同一来源的样本数不一致被抓到")
+
+
+def test_c2_ignores_generic_subjects() -> None:
+    """实测误报源：退路抽出的「对象」是通用词（method/compared/low…），不是实体。"""
+    text = (
+        "The low condition gave R² = 0.42. Another low condition gave R² = 0.45. "
+        "A third compared method reported R² = 0.31."
+    )
+    f = _findings(text)
+    assert not [x for x in f if x.check == "C2" and x.verdict == "conflict"], \
+        [x.title for x in f]
+    print("    通用词不作为对象（曾产生 14 条误报）")
+
+
+def test_extract_skips_metric_in_parenthetical() -> None:
+    """实测误报源：`RMSE (R²) of 34 W/m2 (0.53)` —— (R²) 是别名括号，34 是 RMSE 的值。"""
+    facts = extract_facts([_blk("It shows the best performance with a RMSE (R²) of 34 W/m2 (0.53).")])
+    bad = [f for f in facts if f.metric == "R²" and f.value == 34.0]
+    assert not bad, f"括号内指标被误取值：{[(f.metric, f.value) for f in facts]}"
+    print("    括号内的指标别名不取后文数值（曾把 RMSE 的值当成 R²）")
 
 
 def test_c1_ignores_different_sources() -> None:

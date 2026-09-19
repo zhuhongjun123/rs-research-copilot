@@ -132,6 +132,53 @@ def extract_subject(fact: NumericFact) -> str:
     return subject
 
 
+# 实测误报源：退路抽出的「对象」大量是通用词
+# （`low` / `day` / `compared` / `method` / `coverage` / `regions` / `std` /
+#   `achieved` / `correction` / `rmse` …）—— 它们不是实体，
+# 两组数字本就属于不同对象，强行归为一组就是误报。
+_GENERIC_SUBJECTS = {
+    "low", "high", "day", "night", "year", "month", "summer", "winter",
+    "method", "methods", "model", "models", "result", "results", "compared",
+    "coverage", "conditions", "regions", "region", "achieved", "std", "correction",
+    "rmse", "bias", "mae", "value", "values", "case", "cases", "set", "sets",
+    "study", "paper", "data", "dataset", "scale", "site", "sites", "pixel",
+    "range", "mean", "average", "total", "overall", "general", "different",
+}
+
+
+def distinctive_subject(fact: NumericFact) -> str:
+    """只返回**有辨识度**的对象；否则返回空串（意味着不比较）。
+
+    判定“有辨识度”的三类（实测能稳定区分的）：
+      1. 来自括号（如 `(TRI)`）
+      2. 缩写（全大写 ≥3，如 `LST` / `LSE` / `DEM`）
+      3. 含连字符或数字（如 `18CrNiMo7-6`、`FY-3`）
+    其余退路抽出的普通词一律不信任 —— **宁漏报不误报**。
+    """
+    ctx = fact.context or ""
+    for candidate in reversed(_PAREN_RE.findall(ctx)):
+        nums = _NUM_IN_TEXT.findall(candidate)
+        if nums and any(abs(float(n) - fact.value) > ABS_TOL for n in nums):
+            continue
+        residue = _NUM_IN_TEXT.sub("", candidate)
+        residue = re.sub(re.escape(fact.metric), "", residue, flags=re.IGNORECASE)
+        cleaned = re.sub(r"[^A-Za-z0-9\-]", "", residue)
+        if len(cleaned) >= 3 and cleaned.lower() not in _GENERIC_SUBJECTS:
+            return cleaned.lower()
+
+    subject = extract_subject(fact)
+    if not subject or subject in _GENERIC_SUBJECTS:
+        return ""
+    if re.search(r"[-\d]", subject):  # 带连字符/数字的型号
+        return subject.lower()
+    # 缩写：在**原文里以全大写形式出现**（如 `… report for TRI R² = 0.21`）。
+    # 实测必需：对象常以缩写出现而不带括号，漏了这条会丢掉真实对比
+    #（同一对象的跨位置一致性就抓不到了）。
+    if re.search(rf"\b{re.escape(subject.upper())}\b", ctx):
+        return subject.lower()
+    return ""
+
+
 def _same(a: float, b: float) -> bool:
     if abs(a - b) <= ABS_TOL:
         return True
@@ -163,14 +210,20 @@ def check_c3_relations(facts: list[NumericFact]) -> list[Finding]:
     # |Bias| ≤ RMSE / RMSE ≥ MAE —— 只在**同一个 block（同段句）**内成立才算。
     # ⚠️ 不能用 context 当分组键：context 是各自居中的窗口，同句两条事实的
     #    context 并不相同（实测因此完全抓不到矛盾）。
-    # 数学关系只在**同一对象的同一句**内成立：跨句/跨对象比较会产生误报
-    # （实测：同段内 MAE 讲 BBE 差异、RMSE 讲改进后估算，不能互比）。
+    # 数学关系只在**同一对象的同一句**内成立。
+    #
+    # ⚠️ 仅靠「同句」不够 —— 实测在 12 篇语料上产生 8 条「|Bias| > RMSE」误报：
+    #    同一句里 Bias 与 RMSE 讲的**不是同一个对象**。所以再要求两者共享一个
+    #    **有辨识度的对象**；对象不可得则不比较（宁漏报，不要报出错误的“数学不可能”）。
     by_ctx: dict[tuple, dict[str, list[NumericFact]]] = defaultdict(lambda: defaultdict(list))
     for f in facts:
         if f.metric in ("RMSE", "Bias", "MAE"):
-            by_ctx[(f.page, f.block_index, f.sentence)][f.metric].append(f)
+            key = (f.page, f.block_index, f.sentence, distinctive_subject(f))
+            by_ctx[key][f.metric].append(f)
 
     for ctx, group in by_ctx.items():
+        if not ctx[3]:
+            continue  # 对象不可辨识 → 不做关系判定
         rmse = group.get("RMSE", [])
         for other in ("MAE", "Bias"):
             for a in rmse:
@@ -211,9 +264,11 @@ def check_c2_metric_consistency(facts: list[NumericFact]) -> list[Finding]:
         #    不是两个互相冲突的独立值 —— 拿它互比会产生 100% 误报。
         if f.relation == "to":
             continue
-        subject = extract_subject(f)
+        # ⚠️ 只用**有辨识度**的对象。退路抽出的通用词（low/method/compared…）
+        #    会把不同对象的数字归为一组 —— 实测在 12 篇语料上产生 14 条误报。
+        subject = distinctive_subject(f)
         if not subject:
-            continue  # 对象抽不出 → 不比较（宁漏报不误报）
+            continue  # 对象不可靠 → 不比较（宁漏报不误报）
         groups[(f.metric, subject)].append(f)
 
     for (metric, subject), items in groups.items():
@@ -345,7 +400,7 @@ def check_c5_units(facts: list[NumericFact]) -> list[Finding]:
     for f in facts:
         if f.metric == "样本量" or not f.unit:
             continue
-        key = (f.metric, extract_subject(f))
+        key = (f.metric, distinctive_subject(f))
         groups[key].add(f.unit)
         examples[key].append(f)
 
