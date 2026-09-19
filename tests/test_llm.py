@@ -45,7 +45,10 @@ def test_local_embedder_builds_without_key() -> None:
         if spec_before is not None:
             os.environ["EMBED_PROVIDER"] = spec_before
     assert emb.spec.provider == "local"
-    assert emb.spec.dim == 384, f"本地兜底应为 384 维，实际 {emb.spec.dim}"
+    # 断言与预设一致，不写死数字 —— 预设调整时不会造成假失败
+    assert emb.spec.dim == int(PROVIDER_PRESETS["local"]["embed_dim"]), (
+        f"本地兜底维度与预设不一致：{emb.spec.dim}"
+    )
     print(f"    local → {emb.spec.model} ({emb.spec.dim} 维)")
 
 

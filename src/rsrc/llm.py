@@ -80,6 +80,17 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
 
 
 @dataclass(frozen=True)
+class ChatSpec:
+    """对话模型规格。"""
+
+    provider: str
+    model: str
+
+    def fingerprint(self) -> str:
+        return hashlib.sha256(f"{self.provider}|{self.model}".encode()).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
 class EmbeddingSpec:
     """一次索引构建所用的向量模型指纹。
 
@@ -180,6 +191,45 @@ class LocalEmbedder:
 
 
 # ── 工厂 ────────────────────────────────────────────────────────
+def build_chat(provider: str | None = None):
+    """构造对话客户端。返回 `(client, ChatSpec)`；无可用配置时返回 `None`。
+
+    ⚠️ 返回 None 是**一等公民**：审查链路在无 LLM 时应当**降低到纯确定性报告**，
+    而不是报错 —— 核心检查项本来就不依赖 LLM。
+
+    实测：SiliconFlow 上 `deepseek-ai/DeepSeek-V3` 与 `Qwen/Qwen2.5-7B-Instruct` 可用；
+    `Qwen/Qwen3-8B` 因是思考模型，短 max_tokens 下会超时。
+    """
+    name = (provider or os.environ.get("LLM_PROVIDER_NAME") or "").lower()
+    if not name:
+        if os.environ.get("DEEPSEEK_API_KEY"):
+            name = "deepseek"
+        elif os.environ.get("SILICONFLOW_API_KEY"):
+            name = "siliconflow"
+        elif os.environ.get("OPENROUTER_API_KEY"):
+            name = "openrouter"
+        else:
+            return None
+
+    preset = PROVIDER_PRESETS.get(name)
+    if preset is None:
+        return None
+    key = os.environ.get("LLM_API_KEY") or os.environ.get(f"{name.upper()}_API_KEY", "")
+    base_url = os.environ.get("LLM_BASE_URL") or preset.get("base_url", "")
+    if not key or not base_url:
+        return None
+
+    model = os.environ.get("LLM_MODEL") or preset.get("llm_model", "")
+    if not model:
+        return None
+
+    from openai import OpenAI
+
+    return OpenAI(api_key=key, base_url=base_url, timeout=120.0), ChatSpec(
+        provider=name, model=model
+    )
+
+
 def build_embedder(provider: str | None = None) -> Embedder:
     """按 `.env` 构造 embedder。
 
