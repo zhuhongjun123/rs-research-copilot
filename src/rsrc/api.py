@@ -81,6 +81,21 @@ class AuditResponse(BaseModel):
     injections: list[str] = []
 
 
+class AskRequest(BaseModel):
+    question: str = Field(description="问题")
+    top_k: int = Field(default=10, description="检索条数")
+
+
+class AskResponse(BaseModel):
+    question: str
+    answer: str
+    refused: bool = Field(description="是否拒答（证据不足时的设计行为）")
+    hits: list[dict]
+    verified: list[dict] = Field(description="有支撑的断言（确定性回查结果）")
+    unsupported: list[dict] = Field(description="无支撑的断言")
+    trace: list[str]
+
+
 def _load_parsed(key: str) -> dict:
     path = PARSED_DIR / f"{key}.json"
     if not path.is_file():
@@ -113,6 +128,38 @@ def root() -> dict:
     }
 
 
+# QA 引擎加载代价较大（索引 + 模型），进程内缓存
+_ENGINE = None
+
+
+def _get_engine():
+    global _ENGINE
+    if _ENGINE is None:
+        from rsrc.qa import QAEngine
+
+        _ENGINE = QAEngine()
+    return _ENGINE
+
+
+@app.post("/ask", response_model=AskResponse, summary="知识库问答（可溯源 + 引用核验 + 拒答）")
+def ask(req: AskRequest) -> AskResponse:
+    """基于已建索引作答。
+
+    - **引用核验**：答案里的数值断言会被**确定性回查**是否真在所引片段中
+    - **拒答**：检索证据不足时直接拒答（`refused=true`），不靠模型先验硬答
+    """
+    try:
+        engine = _get_engine()
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="未找到索引。请先构建：\n  pixi run py scripts/build_index.py",
+        ) from None
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return AskResponse(**engine.ask(req.question, top_k=req.top_k).to_dict())
+
+
 @app.get("/health", summary="健康检查与依赖状态")
 def health() -> dict:
     """报告各依赖是否可用 —— 便于定位「为什么跑不起来」。"""
@@ -136,6 +183,17 @@ def health() -> dict:
     except Exception as exc:  # noqa: BLE001
         embed_msg = f"不可用：{str(exc)[:100]}"
 
+    index_msg = "未构建"
+    man = INDEX_DIR / "manifest.json"
+    if man.is_file():
+        try:
+            m = json.loads(man.read_text(encoding="utf-8"))
+            e = m["embedding"]
+            index_msg = (f"{m['chunks']} chunk / {len(m['papers'])} 篇 / "
+                         f"{e['provider']}/{e['model']} ({e['dim']} 维)")
+        except (json.JSONDecodeError, KeyError):
+            index_msg = "manifest 损坏，建议重建"
+
     return {
         "ok": True,
         "zotero": {"available": zotero_ok, "detail": zotero_msg},
@@ -143,6 +201,7 @@ def health() -> dict:
                 "detail": f"{chat[1].provider}/{chat[1].model}" if chat else "未配置（审查仍可用）"},
         "embedding": {"detail": embed_msg},
         "parsed_papers": len(list(PARSED_DIR.glob("*.json"))) if PARSED_DIR.is_dir() else 0,
+        "index": {"detail": index_msg},
     }
 
 

@@ -103,6 +103,31 @@ def test_inject_demo_catches_defects() -> None:
     print("    跳过（没有可注入的论文）")
 
 
+def test_ask_endpoint() -> None:
+    """问答端点：要么作答并核验，要么**明确拒答**（不能两者都不是）。"""
+    r = client.post("/ask", json={"question": "用了多少个 FLUXNET 站点做验证？", "top_k": 5})
+    if r.status_code == 404:
+        print("    跳过（索引未构建）")
+        return
+    assert r.status_code == 200, r.text[:160]
+    body = r.json()
+    assert body["answer"], "既未作答也未拒答"
+    assert body["refused"] or body["hits"], "作答但没有任何检索命中"
+    print(f"    {'拒答' if body['refused'] else '作答'} | 命中 {len(body['hits'])} | "
+          f"有支撑 {len(body['verified'])} / 无支撑 {len(body['unsupported'])}")
+
+
+def test_ask_refuses_out_of_library() -> None:
+    r = client.post("/ask", json={"question": "2024 年诺贝尔物理学奖颁给了谁？"})
+    if r.status_code == 404:
+        print("    跳过（索引未构建）")
+        return
+    assert r.status_code == 200, r.text[:160]
+    body = r.json()
+    assert body["refused"], "库外问题未拒答"
+    print("    库外问题经 API 也被拒答")
+
+
 def _run_all() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

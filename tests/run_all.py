@@ -13,7 +13,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TESTS = ("test_extract", "test_checks", "test_graph", "test_zotero", "test_llm", "test_api")
+TESTS = ("test_extract", "test_checks", "test_graph", "test_retrieval", "test_qa",
+         "test_zotero", "test_llm", "test_api")
 
 
 def main() -> int:
