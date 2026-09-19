@@ -49,17 +49,72 @@ _METRIC_RE = re.compile(
     re.IGNORECASE,
 )
 
-# 指标与数值之间的「连接段」——**不枚举连接词，而是限定扫描窗口**。
-# 原因：实测连接方式无穷多（= : of is was reached ( reduced from decreasing from …），
-# 枚举必然漏。改为「跳过一段不含数字、不跨句的字符，然后读数字」。
-_LINK_MAX = 44
+# 指标与数值之间的「连接段」——**白名单 token 扫描**。
+#
+# 演进过程（两次实测驱动）：
+#   1. 枚举完整连接串（`= : of is …`）→ 必然漏，只抽到 21 条
+#   2. 盲扫「不含数字的字符」 → 抽到 66 条，但会跨到下一分句：
+#      实测「LST bias using DEMs matched to the 5000 m」把 5000 当成了 bias 值
+#   3. **白名单 token 扫描** → 既不枚举完整连接串，也不会跨分句
+_LINK_MAX = 60
 _SENTENCE_END = "。;；\n"
+
+# 允许出现在指标与数值之间的词（小写）
+_CONNECTOR_WORDS = {
+    "of", "is", "are", "was", "were", "be", "been", "being",
+    "reached", "reaches", "reach", "reaching",
+    "equal", "equals", "equaled", "equalled", "equalto",
+    "at", "from", "to", "by", "about", "approximately", "approx",
+    "reduced", "increased", "decreased", "dropped", "decreasing",
+    "increasing", "declined", "improved", "higher", "lower", "than",
+    "value", "values", "mean", "average", "only", "just", "nearly",
+    "almost", "around", "respectively", "and", "or", "up", "down",
+}
+# 允许的符号（注意：**不含 `.`** —— 句末与小数点都以它开头，一律终止）
+_CONNECTOR_SYMS = set("=:：~≈<>≤≥()[],;-+\u2212\u2013\u2014")
+
+
+def _scan_link(rest: str) -> int:
+    """返回连接段长度：从 rest 开头扫到数值前的字符数。
+
+    只允许白名单词与符号；碰到任何其它 token 立即停（不跨分句）。
+    """
+    i = 0
+    limit = min(_LINK_MAX, len(rest))
+    while i < limit:
+        ch = rest[i]
+        if ch.isdigit():
+            break
+        if ch in _SENTENCE_END:
+            break
+        if ch.isspace() or ch in _CONNECTOR_SYMS:
+            i += 1
+            continue
+        word = re.match(r"[A-Za-z]+", rest[i:])
+        if word and word.group(0).lower() in _CONNECTOR_WORDS:
+            i += word.end()
+            continue
+        break  # 非白名单 token → 中间隔了别的东西，不是数值连接段
+    return i
 
 # 数值前可能出现的近似标记
 _APPROX_RE = re.compile(r"[≈~\u2248]|about\s+|around\s+|approximately\s+|约")
 # 不等式标志
 _INEQ_RE = re.compile(r"<=|>=|≤|≥|<|>")
 _NUMBER_RE = re.compile(r"^(-?\d+(?:\.\d+)?)")
+
+# 句末判定：**标点后跟大写字母（英文）或 CJK（中文）**才算断句。
+#
+# ⚠️ 不能用「前面不是数字」来排除小数点 —— 那会把「数字后紧跟句号」也误排除：
+#    实测 `…an RMSE of 0.02. After calibration … Bias reduced to 0.003`
+#    两句被并成一句，于是拿校准前的 Bias 与校准后的 RMSE 互比 → C3 误报。
+#    正确做法：小数点后必跟数字（无空白），句号后跟空白+大写。
+_SENT_BOUND_RE = re.compile(r"(?:[.;!?](?=\s+[A-Z])|[。；！？])")
+
+
+def _sentence_of(text: str, pos: int) -> int:
+    """pos 属于 block 内第几句（从 0 开始）。"""
+    return len(_SENT_BOUND_RE.findall(text[:pos]))
 # 单位（可选，跟在数值后）
 _UNIT_RE = re.compile(
     r"^\s*(%|K|°C|℃|mm/month|mm/day|mm|W/m²|W/m2|g/m²|g/m2|m/s|kg/m²)?"
@@ -76,10 +131,19 @@ class NumericFact:
     metric: str
     value: float
     unit: str
-    relation: str  # "=" / "≈" / "<" / ">" / 区间则标 "from"/"to"
+    relation: str  # "=" / "≈" / "<" / ">"；区间第二值标 "to"
     page: int | None
     block_type: str
     context: str  # 原文片段，供人工核验
+    block_index: int = -1  # 稳定标识：第几个 block
+    # context 是**各自居中的窗口**，同一句里两条事实的 context 并不相同 ——
+    # 拿 context 当「同句」判据必然失败（实测：C1/C3 因此完全抓不到矛盾）。
+    sentence: int = -1  # 稳定标识：block 内的第几句
+    # ⚠️ 为什么还要到句级：block 可能是整段，段内多句常谈**不同对象**。
+    #    实测论文1 同段内 `MAE up to 10 mm/month`（讲 BBE 差异）与
+    #    `reduced RMSE (by 2.29-3.65)`（讲改进后的估算）被放在一起比，
+    #    得出「RMSE < MAE 不可能」的**误报**。
+    #    数学关系（RMSE≥MAE、|Bias|≤RMSE）只在**同一对象的同一句**内成立。
 
     def key(self) -> tuple:
         return (self.metric, self.value, self.unit, self.relation)
@@ -127,7 +191,7 @@ def extract_facts(
     """
     facts: list[NumericFact] = []
 
-    for block in blocks:
+    for block_index, block in enumerate(blocks):
         if block.get("type") in ("picture", "formula"):
             continue  # 图内文字无法从文本层获得；公式另处理
         text = normalize_text(block.get("text") or "")
@@ -138,14 +202,8 @@ def extract_facts(
             metric = _canon_metric(match.group(1))
             rest = text[match.end() :]
 
-            # 1) 扫描窗口：跳过一段不含数字、不跨句的字符（容纳任意连接词）
-            window = 0
-            while (
-                window < min(_LINK_MAX, len(rest))
-                and not rest[window].isdigit()
-                and rest[window] not in _SENTENCE_END
-            ):
-                window += 1
+            # 1) 连接段：白名单 token 扫描（不枚举完整连接串，也不跨分句）
+            window = _scan_link(rest)
             link = rest[:window]
 
             # 2) 关系：不等式优先，其次近似，否则等值
@@ -172,7 +230,10 @@ def extract_facts(
 
             # ⚠️ num_end 是相对 rest 的偏移，必须换算回 text 的绝对坐标
             abs_end = match.end() + num_end
-            ctx_start = max(0, match.start() - 20)
+            # ⚠️ 左侧窗口要够宽：实测只取 20 字符时会把 `(TRI)` 这种对象括号**截断**，
+            #    导致括号正则匹配不到 → 对象退化成邻近形容词 → C2 漏报。
+            #    context 仅用于人工核验与对象抽取，宁宽勿窄。
+            ctx_start = max(0, match.start() - 70)
             context = re.sub(r"\s+", " ", text[ctx_start : abs_end + 30])
             facts.append(
                 NumericFact(
@@ -183,6 +244,8 @@ def extract_facts(
                     page=block.get("page"),
                     block_type=block.get("type", ""),
                     context=context,
+                    block_index=block_index,
+                    sentence=_sentence_of(text, match.start()),
                 )
             )
 
@@ -201,6 +264,8 @@ def extract_facts(
                             page=block.get("page"),
                             block_type=block.get("type", ""),
                             context=context,
+                            block_index=block_index,
+                            sentence=_sentence_of(text, match.start()),
                         )
                     )
 
