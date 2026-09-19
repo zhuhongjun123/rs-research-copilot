@@ -11,6 +11,30 @@ import os
 import re
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def load_dotenv(path: Path | None = None) -> None:
+    """极简 `.env` 加载器（避免为十几行引入 python-dotenv）。
+
+    规则：**已存在的环境变量不覆盖**（真环境变量优先于文件）。
+    本函数幂等，可重复调用。
+    """
+    env_file = path or PROJECT_ROOT / ".env"
+    if not env_file.is_file():
+        return
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip()
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+load_dotenv()
+
 # ── Zotero ──────────────────────────────────────────────────────
 _DEFAULT_DATA_DIR_NAME = "Zotero"
 _PREFS_RE = re.compile(r'user_pref\("extensions\.zotero\.dataDir",\s*"(.+?)"\)')
@@ -61,7 +85,6 @@ def local_api_base() -> str:
 
 
 # ── 项目路径 ────────────────────────────────────────────────────
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 INDEX_DIR = DATA_DIR / "index"
 BENCH_DIR = DATA_DIR / "bench"

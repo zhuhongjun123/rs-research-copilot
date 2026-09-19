@@ -100,3 +100,61 @@ fulltext.sqlite  25 MB，726 篇已索引（其中 CJK 249 篇）
 → 必须 `unquote` 并处理 `file:///F:/` 前导斜杠，否则 Path 不可用。
 
 ---
+
+---
+
+## 2026-09-19 · Day 1 续：Embedding 选型实测
+
+### 调研结论修正了优化目标
+
+按 474 篇 × ~8,000 token ≈ **3.8M token** 估算：
+
+| 渠道 | 全量成本 | 结论 |
+| --- | --- | --- |
+| 百炼 `text-embedding-v4` | 免费额度 100 万 token 后约 **¥1.4** | 中文最强（同族 8B C-MTEB 73.84） |
+| SiliconFlow `BAAI/bge-m3` | 标价 ¥0/M | **实测零余额被拒，见下** |
+| OpenRouter `:free` | $0 | ⚠️ 无充值仅 **50 请求/天**（要跑 12 天）+ `:free` 变体「**可能被留存用于训练**」 |
+| 本地 fastembed | **¥0** | 见下 |
+
+**核心判断**：这个规模下**免费额度根本不是瓶颈**（全量最多约 2 元）。该优化的是**中英混合检索质量** —— 库里中文占 **249/474 ≈ 52%**，接近一半。
+
+### ❌ 失败 4：SiliconFlow 零余额账户全线 402
+
+调研查到 `BAAI/bge-m3` 在 SiliconFlow 标价 **¥0/M token**，据此推断可以零成本使用。
+
+**实测**：`BAAI/bge-m3`、`Pro/BAAI/bge-m3`、`Qwen/Qwen3-Embedding-0.6B`、`BAAI/bge-large-zh-v1.5` **全部返回 `402` "Sorry, your account balance is insufficient"**。
+`/v1/user/info` 也返回 `410 deprecated`，查不到余额。
+
+**教训**：「模型单价为 0」≠「零余额可用」。平台可能仍要求账户有正余额。**价格页数字不能替代一次真实的 API 调用验证。**
+
+### ❌ 失败 5：`.env` 里写死 `EMBED_MODEL` 会跨 provider 泄漏
+
+`.env` 写了 `EMBED_MODEL=BAAI/bge-m3`，切到 `EMBED_PROVIDER=local` 后这个值被沿用 → fastembed 报 `Model BAAI/bge-m3 is not supported`。
+
+**根因**：`EMBED_MODEL` 是全局的，但模型名是 **provider 私有**的。
+**修法**：`.env` 不再写 `EMBED_MODEL`/`EMBED_DIM`（由 provider 预设驱动），只在需要覆盖时才填。
+
+### ❌ 失败 6：fastembed 不支持 bge-m3
+
+`TextEmbedding.list_supported_models()` 实测 30 个模型，**不含 `BAAI/bge-m3`**。
+多语/中文可选：`MiniLM-L12-v2`(384/0.22GB)、`mpnet-base-v2`(768/1.0GB)、`multilingual-e5-large`(1024/2.24GB)、`jina-v2-base-zh`(768/0.64GB)、`bge-small-zh-v1.5`(512/0.09GB)。
+→ 默认改用 **`paraphrase-multilingual-mpnet-base-v2`（768 维）**，并在代码里加了「不支持就列出可选模型」的报错。
+
+### ✅ 本地兜底实测：可行
+
+| 指标 | 实测 |
+| --- | --- |
+| 模型 | `paraphrase-multilingual-mpnet-base-v2`，768 维 |
+| 首次调用（含 ONNX 初始化） | 3.0 s |
+| **预热后吞吐** | **293 ms/chunk（3.4 条/秒）** |
+| **全库 13,000 chunk 外推** | **约 64 分钟** |
+
+> ⚠️ 注意第一次粗测得 22,307 ms/条 —— 那是**首次调用把模型初始化也算进去了**（5 条样本）。
+> **教训**：性能测量必须先预热、且样本量足够，否则会得出「慢 76 倍」的错误结论。
+
+语义区分正常（实测余弦）：「地表发射率地形校正」↔「terrain correction of LSE」**0.7766** vs 无关句 **0.2749**。
+
+### 结论
+
+**默认走本地兜底**：¥0、离线、不需要 key，符合「本地可跑通」验收标准，约 1 小时建完索引。
+有 API key 的用户可切百炼拿到更好的中文检索质量（约 ¥1.4），**但换模型必须全量重建索引**（`EmbeddingSpec.fingerprint()` 绑定）。

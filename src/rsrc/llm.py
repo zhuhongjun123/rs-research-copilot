@@ -64,9 +64,17 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
         "batch_size": "20",
         "max_tokens_per_batch": "32000",
     },
-    "local": {  # 离线兜底
-        "embed_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        "embed_dim": "384",
+    # 离线兜底（fastembed / ONNX，不拉 PyTorch）。
+    # 候选（实测 fastembed 支持的多语/中文模型）：
+    #   sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2  384  0.22 GB
+    #   sentence-transformers/paraphrase-multilingual-mpnet-base-v2   768  1.00 GB  ← 默认
+    #   intfloat/multilingual-e5-large                               1024  2.24 GB
+    #   jinaai/jina-embeddings-v2-base-zh                             768  0.64 GB（仅中文，8192 上下文）
+    #   BAAI/bge-small-zh-v1.5                                        512  0.09 GB（仅中文）
+    # ⚠️ fastembed **不支持** BAAI/bge-m3（实测报 ValueError）
+    "local": {
+        "embed_model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+        "embed_dim": "768",
     },
 }
 
@@ -148,8 +156,18 @@ class LocalEmbedder:
 
     def _lazy_model(self):
         if self._model is None:
-            from fastembed import TextEmbedding
-
+            try:
+                from fastembed import TextEmbedding
+            except ImportError as exc:  # pragma: no cover
+                raise RuntimeError(
+                    "本地兜底需要 fastembed：pixi add fastembed"
+                ) from exc
+            supported = {m["model"] for m in TextEmbedding.list_supported_models()}
+            if self.spec.model not in supported:
+                raise ValueError(
+                    f"fastembed 不支持 `{self.spec.model}`。可选的多语/中文模型：\n  "
+                    + "\n  ".join(sorted(supported))
+                )
             self._model = TextEmbedding(model_name=self.spec.model)
         return self._model
 
