@@ -14,7 +14,8 @@ venv/
 *.index
 *.faiss
 data/index/
-reports/            # 审查报告为生成物；内容含论文片段，不入库
+# 审查报告为生成物，且含论文片段
+reports/
 data/bench/*.generated.*
 
 # ── 内部文档：含求职策略与口径约定，不进公开仓库 ──────
